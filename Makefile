@@ -7,3 +7,6 @@ CONTIKI_WITH_RIME = 1
 
 CONTIKI = ../..
 include $(CONTIKI)/Makefile.include
+
+TARGET_LIBFILES += hashmap/libhashmap.a
+LDFLAGS += -static -L./hashmap -l:libhashmap.a

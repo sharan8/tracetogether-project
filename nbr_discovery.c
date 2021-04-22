@@ -9,8 +9,6 @@
 #include "defs_and_types.h"
 #include "net/netstack.h"
 #include "random.h"
-#include <string.h>
-#include <stdbool.h>
 #include "lib/memb.h"
 #ifdef TMOTE_SKY
 #include "powertrace.h"

@@ -36,6 +36,7 @@ static int curr_slot_index = 1;
 static int permutation_arr_index = 0;
 static int permutation_arr[PROBE_SLOTS];
 static int debug = 0;
+static int maintenance_flag = 0;
 /*---------------------------------------------------------------------------*/
 // Get a random permutation for the active probing slots
 void populate_permuation_arr();

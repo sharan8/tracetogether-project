@@ -909,10 +909,10 @@ END GROUP
                 0x0000000000000ffc       0x5c obj_srf06-cc26xx/startup_gcc.o
                 0x0000000000000ffc                ResetISR
  .text.process_thread_temperature_sensing_process
-                0x0000000000001058       0xb4 nbr_discovery.co
+                0x0000000000001058       0xb0 nbr_discovery.co
  .text.sender_scheduler
-                0x000000000000110c      0x244 nbr_discovery.co
-                0x000000000000110c                sender_scheduler
+                0x0000000000001108      0x248 nbr_discovery.co
+                0x0000000000001108                sender_scheduler
  .text.insert   0x0000000000001350       0x7c nbr_discovery.co
                 0x0000000000001350                insert
  .text.broadcast_recv

@@ -33,7 +33,6 @@
 #define SIZE 20 // for hashtable
 #define INDOOR_RSSI_THRESHOLD -63 // for indoor setting
 #define OUTDOOR_RSSI_THRESHOLD -70 // for outdoor setting
-#define ACTIVE_RSSI_THRESHOLD INDOOR_RSSI_THRESHOLD // for entry into 3m radius
 #define MAINTENANCE_FREQ 3  // maintenance per number of anchor slots
 #define TEMP_THRESHOLD 27 // for entry into 3m radius
 /*---------------------------------------------------------------------------*/

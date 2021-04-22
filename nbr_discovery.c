@@ -9,18 +9,18 @@
 #include "defs_and_types.h"
 #include "net/netstack.h"
 #include "random.h"
-#include <string.h>
-#include <stdbool.h>
 #include "lib/memb.h"
 #ifdef TMOTE_SKY
 #include "powertrace.h"
 #endif
 /*---------------------------------------------------------------------------*/
-#define TOTAL_SLOTS 17
+#define TOTAL_SLOTS 25
 #define SLOT_TIME (RTIMER_SECOND/64)
 #define PROBE_SLOTS (TOTAL_SLOTS/2)
-#define MAX_ITEMS 16 // for hashtable
+#define MAX_ITEMS 20 // for hashtable
 #define SIZE 20 // for hashtable
+#define RSSI_THRESHOLD -63 // for entry into 3m radius
+#define MAINTENANCE_FREQ 3  // maintenance per number of anchor slots
 /*---------------------------------------------------------------------------*/
 // duty cycle = WAKE_TIME / (WAKE_TIME + SLEEP_SLOT * SLEEP_CYCLE)
 /*---------------------------------------------------------------------------*/
@@ -36,6 +36,7 @@ static int curr_slot_index = 1;
 static int permutation_arr_index = 0;
 static int permutation_arr[PROBE_SLOTS];
 static int debug = 0;
+static int maintenance_flag = 0;
 /*---------------------------------------------------------------------------*/
 // Get a random permutation for the active probing slots
 void populate_permuation_arr();
@@ -43,30 +44,32 @@ void populate_permuation_arr();
 PROCESS(cc2650_nbr_discovery_process, "cc2650 neighbour discovery process");
 AUTOSTART_PROCESSES(&cc2650_nbr_discovery_process);
 /*---------------------------------------------------------------------------*/
+// HASHMAP IMPLEMENTATION
 
-// TESTING HASHMAP
-
-struct DataItem {
-  int data;   
-  int key;
+// Represents an encountered node
+struct TrackedNode {
+  int node_id;
+  unsigned long first_seen;     // first seen timestamp
+  unsigned long last_seen;      // last seen timestamp
+  int exposed;                  // 1 if exposed for >30s, 0 otherwise
 };
 
-struct DataItem* hashArray[SIZE]; 
-struct DataItem* dummyItem;
-struct DataItem* item;
+struct TrackedNode* hashArray[SIZE]; // hashtable
+struct TrackedNode* dummyItem;
+struct TrackedNode* item;
 
 int hashCode(int key) {
   return key % SIZE;
 }
 
-struct DataItem *search(int key) {
+struct TrackedNode *search(int node_id) {
   //get the hash 
-  int hashIndex = hashCode(key);  
+  int hashIndex = hashCode(node_id);  
 
   //move in array until an empty 
   while(hashArray[hashIndex] != NULL) {
 
-    if(hashArray[hashIndex]->key == key)
+    if(hashArray[hashIndex]->node_id == node_id)
       return hashArray[hashIndex]; 
 
     //go to next cell
@@ -79,18 +82,20 @@ struct DataItem *search(int key) {
   return NULL;        
 }
 
-void insert(int key,int data) {
-  MEMB(dummy_mem, struct DataItem, MAX_ITEMS);
-  struct DataItem *item;
+void insert(int node_id, uint16_t first_seen) {
+  MEMB(dummy_mem, struct TrackedNode, MAX_ITEMS);
+  struct TrackedNode *item;
   item = memb_alloc(&dummy_mem);
-  item->data = data;
-  item->key = key;
+  item->node_id = node_id;
+  item->first_seen = first_seen;
+  item->last_seen = first_seen;
+  item->exposed = 0;
 
   //get the hash 
-  int hashIndex = hashCode(key);
+  int hashIndex = hashCode(node_id);
 
   //move in array until an empty or deleted cell
-  while(hashArray[hashIndex] != NULL && hashArray[hashIndex]->key != -1) {
+  while(hashArray[hashIndex] != NULL && hashArray[hashIndex]->node_id != -1) {
     //go to next cell
     ++hashIndex;
 
@@ -99,21 +104,23 @@ void insert(int key,int data) {
   }
 
   hashArray[hashIndex] = item;
+  printf("Successfully added node with node ID: %d\n", node_id);
 }
 
-struct DataItem* delete(struct DataItem* item) {
-  int key = item->key;
+struct TrackedNode* delete(struct TrackedNode* item) {
+  int node_id = item->node_id;
 
   //get the hash 
-  int hashIndex = hashCode(key);
+  int hashIndex = hashCode(node_id);
 
   //move in array until an empty
   while(hashArray[hashIndex] != NULL) {
 
-    if(hashArray[hashIndex]->key == key) {
-      struct DataItem* temp = hashArray[hashIndex]; 
+    if(hashArray[hashIndex]->node_id == node_id) {
+      struct TrackedNode* temp = hashArray[hashIndex]; 
 
       //assign a dummy item at deleted position
+      dummyItem->node_id = -1;
       hashArray[hashIndex] = dummyItem; 
       return temp;
     }
@@ -134,7 +141,7 @@ void display() {
   for(i = 0; i<SIZE; i++) {
 
     if(hashArray[i] != NULL)
-      printf(" (%d,%d)",hashArray[i]->key,hashArray[i]->data);
+      printf(" (%d,%d,%d)",hashArray[i]->node_id,hashArray[i]->first_seen,hashArray[i]->last_seen);
     else
       printf(" ~~ ");
   }
@@ -142,57 +149,47 @@ void display() {
   printf("\n");
 }
 
-static void test_hashmap() {
-  MEMB(dummy_mem, struct DataItem, MAX_ITEMS);
-  struct DataItem *dummyItem;
-  dummyItem = memb_alloc(&dummy_mem);
-  dummyItem->data = -1;
-  dummyItem->key = -1;
-
-  if (dummyItem != NULL) {
-    printf("ADDED\n");
-    printf("%d\n", dummyItem->data);
-  }
-
-  insert(1, 20);
-  insert(2, 70);
-  insert(42, 80);
-  insert(4, 25);
-  insert(12, 44);
-  insert(14, 32);
-  insert(17, 11);
-  insert(13, 78);
-  insert(37, 97);
-
-  display();
-  item = search(37);
-
-  if(item != NULL) {
-    printf("Element found: %d\n", item->data);
-  } else {
-    printf("Element not found\n");
-  }
-
-  delete(item);
-  item = search(37);
-
-  if(item != NULL) {
-    printf("Element found: %d\n", item->data);
-  } else {
-    printf("Element not found\n");
-  }
-}
-
 /*---------------------------------------------------------------------------*/
-  static void
+static void
 broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
 {
   memcpy(&received_packet, packetbuf_dataptr(), sizeof(data_packet_struct));
+  int RSSI_reading =  packetbuf_attr(PACKETBUF_ATTR_RSSI);
   if (debug) {
     // printf("Send seq# %lu  @ %8lu  %3lu.%03lu\n", data_packet.seq, curr_timestamp, curr_timestamp / CLOCK_SECOND, ((curr_timestamp % CLOCK_SECOND)*1000) / CLOCK_SECOND);
-    printf("Rcv pkt RSSI: %d\n", (signed short)packetbuf_attr(PACKETBUF_ATTR_RSSI));
+    printf("Rcv pkt RSSI: %d\n", (signed short) RSSI_reading);
   }
-  printf("%3lu.%03lu DETECT %lu\n", received_packet.timestamp / CLOCK_SECOND, received_packet.src_id);
+
+
+  // Check if RSSI reading exceeds threshold
+  if ((signed short) RSSI_reading > RSSI_THRESHOLD) {
+    printf("%3lu.%03lu DETECT %lu with RSSI: %d\n", curr_timestamp / CLOCK_SECOND, ((curr_timestamp % CLOCK_SECOND)*1000) / CLOCK_SECOND, received_packet.src_id, (signed short)RSSI_reading);
+    unsigned long node_encounter_time = curr_timestamp / CLOCK_SECOND;
+
+    // Insert or update node in hashtable
+    struct TrackedNode* this_tracked_node = search(received_packet.src_id);
+    if (this_tracked_node == NULL) {
+      printf("%3lu.%03lu DETECT %lu\n", curr_timestamp / CLOCK_SECOND, ((curr_timestamp % CLOCK_SECOND)*1000) / CLOCK_SECOND, received_packet.src_id);
+
+      // Insert into hashtable
+      insert(received_packet.src_id, node_encounter_time);
+    } else {
+      // Update node stats
+      this_tracked_node->last_seen = node_encounter_time;
+
+      // Check if the 30s window is exceeded
+      if ((node_encounter_time - this_tracked_node->first_seen >= 30) &&
+          (this_tracked_node->exposed == 0)) {
+        printf("%3lu.%03lu !! CLOSE PROXIMITY FOR 30S !! NODE: %d\n", 
+          curr_timestamp / CLOCK_SECOND, 
+          ((curr_timestamp % CLOCK_SECOND)*1000) / CLOCK_SECOND, 
+          this_tracked_node->node_id);
+
+        // Set node as exposed for 30s
+        this_tracked_node->exposed = 1;
+      }
+    }
+  }
 }
 static const struct broadcast_callbacks broadcast_call = {broadcast_recv};
 static struct broadcast_conn broadcast;
@@ -237,6 +234,22 @@ char sender_scheduler(struct rtimer *t, void *ptr) {
     if (curr_slot_index != 1) {
       nxt_slot_index = 1;
     } else {
+      int i = 0;
+      maintenance_flag += 1;
+      if (maintenance_flag % MAINTENANCE_FREQ == 0) {
+        for (i=0; i<SIZE; i++) {
+          if (hashArray[i] != NULL && hashArray[i]->node_id != -1) {
+            if ((curr_timestamp/CLOCK_SECOND) - hashArray[i]->last_seen >= 30) {
+              printf("%3lu.%03lu LEAVE %d\n", (curr_timestamp / CLOCK_SECOND)-30, ((curr_timestamp % CLOCK_SECOND)*1000) / CLOCK_SECOND, hashArray[i]->node_id);
+              printf("%d CONTACT TIME: %lu s\n", hashArray[i]->node_id, (hashArray[i]->last_seen)-(hashArray[i]->first_seen));
+              delete(hashArray[i]);
+            }
+          }
+        }
+      }
+
+      // display();
+
       nxt_slot_index = permutation_arr[permutation_arr_index];
       permutation_arr_index = (permutation_arr_index + 1) % (PROBE_SLOTS);
     }
@@ -262,9 +275,7 @@ PROCESS_THREAD(cc2650_nbr_discovery_process, ev, data)
 {
   PROCESS_EXITHANDLER(broadcast_close(&broadcast);)
 
-    PROCESS_BEGIN();
-
-  test_hashmap();
+  PROCESS_BEGIN();
 
   random_init(54222 + node_id);
 

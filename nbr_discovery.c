@@ -1,7 +1,5 @@
 #include "contiki.h"
 #include "dev/leds.h"
-#include "dev/sht11/sht11.h"
-#include "platform/native/dev/temperature-sensor.h"
 #include "board.h"
 #include <stdio.h>
 #include <stdint.h>
@@ -14,16 +12,15 @@
 #include "net/netstack.h"
 #include "random.h"
 #include "lib/memb.h"
+#include "sys/etimer.h"
 
 // For temp sensing 
-#include "sys/etimer.h"
-#include "sys/ctimer.h"
+#include "platform/native/dev/temperature-sensor.h"
 #include "dev/watchdog.h"
-#include "button-sensor.h"
-#include "batmon-sensor.h"
 #include "board-peripherals.h"
 #include "rf-core/rf-ble.h"
 #include "ti-lib.h"
+#include "tmp-007-sensor.h"
 
 #ifdef TMOTE_SKY
 #include "powertrace.h"
@@ -34,8 +31,11 @@
 #define PROBE_SLOTS (TOTAL_SLOTS/2)
 #define MAX_ITEMS 20 // for hashtable
 #define SIZE 20 // for hashtable
-#define RSSI_THRESHOLD -63 // for entry into 3m radius
+#define INDOOR_RSSI_THRESHOLD -63 // for indoor setting
+#define OUTDOOR_RSSI_THRESHOLD -70 // for outdoor setting
+#define ACTIVE_RSSI_THRESHOLD INDOOR_RSSI_THRESHOLD // for entry into 3m radius
 #define MAINTENANCE_FREQ 3  // maintenance per number of anchor slots
+#define TEMP_THRESHOLD 27 // for entry into 3m radius
 /*---------------------------------------------------------------------------*/
 // duty cycle = WAKE_TIME / (WAKE_TIME + SLEEP_SLOT * SLEEP_CYCLE)
 /*---------------------------------------------------------------------------*/
@@ -45,6 +45,7 @@ static struct pt pt;
 /*---------------------------------------------------------------------------*/
 static data_packet_struct received_packet;
 static data_packet_struct data_packet;
+static int active_rssi_threshold;
 unsigned long curr_timestamp;
 /*---------------------------------------------------------------------------*/
 static int curr_slot_index = 1;
@@ -56,31 +57,9 @@ static int maintenance_flag = 0;
 // Get a random permutation for the active probing slots
 void populate_permuation_arr();
 /*---------------------------------------------------------------------------*/
-PROCESS(send_sensor_info_process, "Print the Sensors Information");
+PROCESS(temperature_sensing_process, "temperature sensing process");
 PROCESS(cc2650_nbr_discovery_process, "cc2650 neighbour discovery process");
-AUTOSTART_PROCESSES(&send_sensor_info_process, &cc2650_nbr_discovery_process);
-/*---------------------------------------------------------------------------*/
-static void
-get_tmp_reading()
-{
-  SENSORS_ACTIVATE(tmp_007_sensor);
-  int value;
-  
-  value = tmp_007_sensor.value(TMP_007_SENSOR_TYPE_ALL);
-
-  if(value == CC26XX_SENSOR_READING_ERROR) {
-    printf("TMP: Ambient Read Error\n");
-    return;
-  }
-
-  value = tmp_007_sensor.value(TMP_007_SENSOR_TYPE_AMBIENT);
-  printf("TMP: Ambient=%d.%03d C\n", value / 1000, value % 1000);
-
-  value = tmp_007_sensor.value(TMP_007_SENSOR_TYPE_OBJECT);
-  printf("TMP: Object=%d.%03d C\n", value / 1000, value % 1000);
-
-  SENSORS_DEACTIVATE(tmp_007_sensor);
-}
+AUTOSTART_PROCESSES(&temperature_sensing_process, &cc2650_nbr_discovery_process);
 /*---------------------------------------------------------------------------*/
 // HASHMAP IMPLEMENTATION
 
@@ -200,7 +179,7 @@ broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
 
 
   // Check if RSSI reading exceeds threshold
-  if ((signed short) RSSI_reading > RSSI_THRESHOLD) {
+  if ((signed short) RSSI_reading > active_rssi_threshold) {
     printf("%3lu.%03lu DETECT %lu with RSSI: %d\n", curr_timestamp / CLOCK_SECOND, ((curr_timestamp % CLOCK_SECOND)*1000) / CLOCK_SECOND, received_packet.src_id, (signed short)RSSI_reading);
     unsigned long node_encounter_time = curr_timestamp / CLOCK_SECOND;
 
@@ -309,10 +288,40 @@ char sender_scheduler(struct rtimer *t, void *ptr) {
   PT_END(&pt);
 }
 /*---------------------------------------------------------------------------*/
-PROCESS_THREAD(send_sensor_info_process, ev, data)
+PROCESS_THREAD(temperature_sensing_process, ev, data)
 {
+  static struct etimer etimer;
   PROCESS_BEGIN();
-  get_tmp_reading();
+  SENSORS_ACTIVATE(hdc_1000_sensor);
+
+  while(1) {
+    etimer_set(&etimer, CLOCK_SECOND);
+    PROCESS_WAIT_UNTIL(etimer_expired(&etimer));
+
+    int temp;
+    temp = hdc_1000_sensor.value(HDC_1000_SENSOR_TYPE_TEMP);
+    if(temp == CC26XX_SENSOR_READING_ERROR) {
+      continue; // sensor still warming up, or error
+    }
+
+    // Set the appropriate RSSI threshold
+    if (temp/100 > TEMP_THRESHOLD) {
+      active_rssi_threshold = OUTDOOR_RSSI_THRESHOLD;
+      printf("Temp: %d.%02d C, Outdoor RSSI threshold of %d will be used\n", 
+        temp/100, 
+        temp%100, 
+        OUTDOOR_RSSI_THRESHOLD);
+    } else {
+      active_rssi_threshold = INDOOR_RSSI_THRESHOLD;
+      printf("Temp: %d.%02d C, Indoor RSSI threshold of %d will be used\n", 
+        temp/100, 
+        temp%100, 
+        INDOOR_RSSI_THRESHOLD);
+    }
+    break;
+  }
+
+  SENSORS_DEACTIVATE(hdc_1000_sensor);
   PROCESS_END();
 }
 /*---------------------------------------------------------------------------*/

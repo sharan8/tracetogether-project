@@ -13,6 +13,9 @@
 #include "random.h"
 #include "lib/memb.h"
 #include "sys/etimer.h"
+#ifdef TMOTE_SKY
+#include "powertrace.h"
+#endif
 
 // For temp sensing 
 #include "platform/native/dev/temperature-sensor.h"
@@ -22,9 +25,6 @@
 #include "ti-lib.h"
 #include "tmp-007-sensor.h"
 
-#ifdef TMOTE_SKY
-#include "powertrace.h"
-#endif
 /*---------------------------------------------------------------------------*/
 #define TOTAL_SLOTS 25
 #define SLOT_TIME (RTIMER_SECOND/64)
@@ -61,9 +61,9 @@ PROCESS(temperature_sensing_process, "temperature sensing process");
 PROCESS(cc2650_nbr_discovery_process, "cc2650 neighbour discovery process");
 AUTOSTART_PROCESSES(&temperature_sensing_process, &cc2650_nbr_discovery_process);
 /*---------------------------------------------------------------------------*/
-// HASHMAP IMPLEMENTATION
+/* HELPER HASHTABLE IMPLEMENTATION */
 
-// Represents an encountered node
+// represents an encountered node
 struct TrackedNode {
   int node_id;
   unsigned long first_seen;     // first seen timestamp
@@ -72,33 +72,30 @@ struct TrackedNode {
 };
 
 struct TrackedNode* hashArray[SIZE]; // hashtable
-struct TrackedNode* dummyItem;
-struct TrackedNode* item;
+struct TrackedNode* dummyItem; // for empty slots in hashtable
 
+// generate simple hashcode per node_id as minimal clashes expected
 int hashCode(int key) {
   return key % SIZE;
 }
 
+// search for a node_id in the hashtable
 struct TrackedNode *search(int node_id) {
-  //get the hash 
   int hashIndex = hashCode(node_id);  
 
-  //move in array until an empty 
+  // search the hashArray
   while(hashArray[hashIndex] != NULL) {
-
-    if(hashArray[hashIndex]->node_id == node_id)
-      return hashArray[hashIndex]; 
-
-    //go to next cell
-    ++hashIndex;
-
-    //wrap around the table
-    hashIndex %= SIZE;
+    if(hashArray[hashIndex]->node_id == node_id) {
+      return hashArray[hashIndex]; // found!
+    }
+    ++hashIndex; // search the next position
+    hashIndex %= SIZE; // wraparound
   }        
 
   return NULL;        
 }
 
+// insert a <node_id, TrackedNode> pair into the hashtable
 void insert(int node_id, uint16_t first_seen) {
   MEMB(dummy_mem, struct TrackedNode, MAX_ITEMS);
   struct TrackedNode *item;
@@ -108,50 +105,41 @@ void insert(int node_id, uint16_t first_seen) {
   item->last_seen = first_seen;
   item->exposed = 0;
 
-  //get the hash 
+  // get a hash index for this node_id
   int hashIndex = hashCode(node_id);
 
-  //move in array until an empty or deleted cell
+  // find an available position for this entry
   while(hashArray[hashIndex] != NULL && hashArray[hashIndex]->node_id != -1) {
-    //go to next cell
     ++hashIndex;
-
-    //wrap around the table
-    hashIndex %= SIZE;
+    hashIndex %= SIZE; // wraparound
   }
 
   hashArray[hashIndex] = item;
-  printf("Successfully added node with node ID: %d\n", node_id);
+  if (debug) printf("Successfully added node with node ID: %d\n", node_id);
 }
 
+// delete an item from the hashtable
 struct TrackedNode* delete(struct TrackedNode* item) {
   int node_id = item->node_id;
-
-  //get the hash 
   int hashIndex = hashCode(node_id);
 
-  //move in array until an empty
   while(hashArray[hashIndex] != NULL) {
-
     if(hashArray[hashIndex]->node_id == node_id) {
       struct TrackedNode* temp = hashArray[hashIndex]; 
 
-      //assign a dummy item at deleted position
+      // dummify this position in the hashArray
       dummyItem->node_id = -1;
       hashArray[hashIndex] = dummyItem; 
       return temp;
     }
-
-    //go to next cell
     ++hashIndex;
-
-    //wrap around the table
-    hashIndex %= SIZE;
+    hashIndex %= SIZE; // wraparound
   }      
 
   return NULL;        
 }
 
+// display the hashmap for debugging purposes
 void display() {
   int i = 0;
 
@@ -172,37 +160,33 @@ broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
 {
   memcpy(&received_packet, packetbuf_dataptr(), sizeof(data_packet_struct));
   int RSSI_reading =  packetbuf_attr(PACKETBUF_ATTR_RSSI);
-  if (debug) {
-    // printf("Send seq# %lu  @ %8lu  %3lu.%03lu\n", data_packet.seq, curr_timestamp, curr_timestamp / CLOCK_SECOND, ((curr_timestamp % CLOCK_SECOND)*1000) / CLOCK_SECOND);
-    printf("Rcv pkt RSSI: %d\n", (signed short) RSSI_reading);
-  }
+  if (debug) printf("Rcv pkt RSSI: %d\n", (signed short) RSSI_reading);
 
-
-  // Check if RSSI reading exceeds threshold
+  // check if RSSI reading exceeds threshold
   if ((signed short) RSSI_reading > active_rssi_threshold) {
-    printf("%3lu.%03lu DETECT %lu with RSSI: %d\n", curr_timestamp / CLOCK_SECOND, ((curr_timestamp % CLOCK_SECOND)*1000) / CLOCK_SECOND, received_packet.src_id, (signed short)RSSI_reading);
+    if (debug) printf("%3lu.%03lu DETECT %lu with RSSI: %d\n", curr_timestamp / CLOCK_SECOND, ((curr_timestamp % CLOCK_SECOND)*1000) / CLOCK_SECOND, received_packet.src_id, (signed short)RSSI_reading);
     unsigned long node_encounter_time = curr_timestamp / CLOCK_SECOND;
 
-    // Insert or update node in hashtable
+    // insert or update node in hashtable
     struct TrackedNode* this_tracked_node = search(received_packet.src_id);
     if (this_tracked_node == NULL) {
       printf("%3lu.%03lu DETECT %lu\n", curr_timestamp / CLOCK_SECOND, ((curr_timestamp % CLOCK_SECOND)*1000) / CLOCK_SECOND, received_packet.src_id);
 
-      // Insert into hashtable
+      // insert into hashtable
       insert(received_packet.src_id, node_encounter_time);
     } else {
-      // Update node stats
+      // update node stats
       this_tracked_node->last_seen = node_encounter_time;
 
-      // Check if the 30s window is exceeded
+      // check if the 30s window is exceeded
       if ((node_encounter_time - this_tracked_node->first_seen >= 30) &&
           (this_tracked_node->exposed == 0)) {
-        printf("%3lu.%03lu !! CLOSE PROXIMITY FOR 30S !! NODE: %d\n", 
+        printf("%3lu.%03lu !! CLOSE PROXIMITY FOR 30s !! NODE: %d\n", 
           curr_timestamp / CLOCK_SECOND, 
           ((curr_timestamp % CLOCK_SECOND)*1000) / CLOCK_SECOND, 
           this_tracked_node->node_id);
 
-        // Set node as exposed for 30s
+        // set node as exposed for 30s
         this_tracked_node->exposed = 1;
       }
     }
@@ -251,6 +235,8 @@ char sender_scheduler(struct rtimer *t, void *ptr) {
     if (curr_slot_index != 1) {
       nxt_slot_index = 1;
     } else {
+
+      // run maintenance based on MAINTENANCE_FREQ
       int i = 0;
       maintenance_flag += 1;
       if (maintenance_flag % MAINTENANCE_FREQ == 0) {
@@ -258,14 +244,14 @@ char sender_scheduler(struct rtimer *t, void *ptr) {
           if (hashArray[i] != NULL && hashArray[i]->node_id != -1) {
             if ((curr_timestamp/CLOCK_SECOND) - hashArray[i]->last_seen >= 30) {
               printf("%3lu.%03lu LEAVE %d\n", (curr_timestamp / CLOCK_SECOND)-30, ((curr_timestamp % CLOCK_SECOND)*1000) / CLOCK_SECOND, hashArray[i]->node_id);
-              printf("%d CONTACT TIME: %lu s\n", hashArray[i]->node_id, (hashArray[i]->last_seen)-(hashArray[i]->first_seen));
+              printf("Node %d CONTACT TIME: %lu s\n", hashArray[i]->node_id, (hashArray[i]->last_seen)-(hashArray[i]->first_seen));
               delete(hashArray[i]);
             }
           }
         }
       }
 
-      // display();
+      // display(); // for debugging
 
       nxt_slot_index = permutation_arr[permutation_arr_index];
       permutation_arr_index = (permutation_arr_index + 1) % (PROBE_SLOTS);
@@ -288,6 +274,7 @@ char sender_scheduler(struct rtimer *t, void *ptr) {
   PT_END(&pt);
 }
 /*---------------------------------------------------------------------------*/
+// this process runs at the start to determine RSSI threshold based on temperature
 PROCESS_THREAD(temperature_sensing_process, ev, data)
 {
   static struct etimer etimer;
@@ -304,7 +291,7 @@ PROCESS_THREAD(temperature_sensing_process, ev, data)
       continue; // sensor still warming up, or error
     }
 
-    // Set the appropriate RSSI threshold
+    // set the appropriate RSSI threshold
     if (temp/100 > TEMP_THRESHOLD) {
       active_rssi_threshold = OUTDOOR_RSSI_THRESHOLD;
       printf("Temp: %d.%02d C, Outdoor RSSI threshold of %d will be used\n", 
@@ -358,7 +345,7 @@ PROCESS_THREAD(cc2650_nbr_discovery_process, ev, data)
   data_packet.src_id = node_id;
   data_packet.seq = 0;
 
-  // Start sender in one millisecond.
+  // start sender in one millisecond.
   rtimer_set(&rt, RTIMER_NOW() + (RTIMER_SECOND / 1000), 1, (rtimer_callback_t)sender_scheduler, NULL);
 
   PROCESS_END();

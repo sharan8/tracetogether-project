@@ -82,13 +82,14 @@ struct TrackedNode *search(int node_id) {
   return NULL;        
 }
 
-void insert(int node_id, uint16_t arrival_time, uint16_t last_seen) {
+void insert(int node_id, uint16_t first_seen) {
   MEMB(dummy_mem, struct TrackedNode, MAX_ITEMS);
   struct TrackedNode *item;
   item = memb_alloc(&dummy_mem);
   item->node_id = node_id;
-  item->last_seen = last_seen;
-  item->window_expiry = arrival_time + 30;
+  item->first_seen = first_seen;
+  item->last_seen = first_seen;
+  item->exposed = 0;
 
   //get the hash 
   int hashIndex = hashCode(node_id);

@@ -10,7 +10,7 @@
 #include "net/netstack.h"
 #include "random.h"
 #include <string.h>
-#include "hashmap/hashmap.h"
+#include <stdbool.h>
 #ifdef TMOTE_SKY
 #include "powertrace.h"
 #endif
@@ -18,6 +18,7 @@
 #define TOTAL_SLOTS 17
 #define SLOT_TIME (RTIMER_SECOND/64)
 #define PROBE_SLOTS (TOTAL_SLOTS/2)
+#define SIZE 20 // for hashtable
 /*---------------------------------------------------------------------------*/
 // duty cycle = WAKE_TIME / (WAKE_TIME + SLEEP_SLOT * SLEEP_CYCLE)
 /*---------------------------------------------------------------------------*/
@@ -43,60 +44,133 @@ AUTOSTART_PROCESSES(&cc2650_nbr_discovery_process);
 
 // TESTING HASHMAP
 
-struct user {
-    char *name;
-    int age;
+struct DataItem {
+   int data;   
+   int key;
 };
 
-int user_compare(const void *a, const void *b, void *udata) {
-    const struct user *ua = a;
-    const struct user *ub = b;
-    return strcmp(ua->name, ub->name);
+struct DataItem* hashArray[SIZE]; 
+struct DataItem* dummyItem;
+struct DataItem* item;
+
+int hashCode(int key) {
+   return key % SIZE;
 }
 
-bool user_iter(const void *item, void *udata) {
-    const struct user *user = item;
-    printf("%s (age=%d)\n", user->name, user->age);
-    return true;
+struct DataItem *search(int key) {
+   //get the hash 
+   int hashIndex = hashCode(key);  
+	
+   //move in array until an empty 
+   while(hashArray[hashIndex] != NULL) {
+	
+      if(hashArray[hashIndex]->key == key)
+         return hashArray[hashIndex]; 
+			
+      //go to next cell
+      ++hashIndex;
+		
+      //wrap around the table
+      hashIndex %= SIZE;
+   }        
+	
+   return NULL;        
 }
 
-uint64_t user_hash(const void *item, uint64_t seed0, uint64_t seed1) {
-    const struct user *user = item;
-    return hashmap_sip(user->name, strlen(user->name), seed0, seed1);
+void insert(int key,int data) {
+
+   struct DataItem *item = (struct DataItem*) malloc(sizeof(struct DataItem));
+   item->data = data;  
+   item->key = key;
+
+   //get the hash 
+   int hashIndex = hashCode(key);
+
+   //move in array until an empty or deleted cell
+   while(hashArray[hashIndex] != NULL && hashArray[hashIndex]->key != -1) {
+      //go to next cell
+      ++hashIndex;
+		
+      //wrap around the table
+      hashIndex %= SIZE;
+   }
+	
+   hashArray[hashIndex] = item;
+}
+
+struct DataItem* delete(struct DataItem* item) {
+   int key = item->key;
+
+   //get the hash 
+   int hashIndex = hashCode(key);
+
+   //move in array until an empty
+   while(hashArray[hashIndex] != NULL) {
+	
+      if(hashArray[hashIndex]->key == key) {
+         struct DataItem* temp = hashArray[hashIndex]; 
+			
+         //assign a dummy item at deleted position
+         hashArray[hashIndex] = dummyItem; 
+         return temp;
+      }
+		
+      //go to next cell
+      ++hashIndex;
+		
+      //wrap around the table
+      hashIndex %= SIZE;
+   }      
+	
+   return NULL;        
+}
+
+void display() {
+   int i = 0;
+	
+   for(i = 0; i<SIZE; i++) {
+	
+      if(hashArray[i] != NULL)
+         printf(" (%d,%d)",hashArray[i]->key,hashArray[i]->data);
+      else
+         printf(" ~~ ");
+   }
+	
+   printf("\n");
 }
 
 static void test_hashmap() {
-  // create a new hash map where each item is a `struct user`. The second
-  // argument is the initial capacity. The third and fourth arguments are 
-  // optional seeds that are passed to the following hash function.
-  struct hashmap *map = hashmap_new(sizeof(struct user), 0, 0, 0, 
-                                    user_hash, user_compare, NULL);
+  dummyItem = (struct DataItem*) malloc(sizeof(struct DataItem));
+  dummyItem->data = -1;  
+  dummyItem->key = -1; 
 
-  // Here we'll load some users into the hash map. Each set operation
-  // performs a copy of the data that is pointed to in the second argument.
-  hashmap_set(map, &(struct user){ .name="Dale", .age=44 });
-  hashmap_set(map, &(struct user){ .name="Roger", .age=68 });
-  hashmap_set(map, &(struct user){ .name="Jane", .age=47 });
+  insert(1, 20);
+  insert(2, 70);
+  insert(42, 80);
+  insert(4, 25);
+  insert(12, 44);
+  insert(14, 32);
+  insert(17, 11);
+  insert(13, 78);
+  insert(37, 97);
 
-  struct user *user; 
-  
-  printf("\n-- get some users --\n");
-  user = hashmap_get(map, &(struct user){ .name="Jane" });
-  printf("%s age=%d\n", user->name, user->age);
+  display();
+  item = search(37);
 
-  user = hashmap_get(map, &(struct user){ .name="Roger" });
-  printf("%s age=%d\n", user->name, user->age);
+  if(item != NULL) {
+    printf("Element found: %d\n", item->data);
+  } else {
+    printf("Element not found\n");
+  }
 
-  user = hashmap_get(map, &(struct user){ .name="Dale" });
-  printf("%s age=%d\n", user->name, user->age);
+  delete(item);
+  item = search(37);
 
-  user = hashmap_get(map, &(struct user){ .name="Tom" });
-  printf("%s\n", user?"exists":"not exists");
-
-  printf("\n-- iterate over all users --\n");
-  hashmap_scan(map, user_iter, NULL);
-
-  hashmap_free(map);
+  if(item != NULL) {
+    printf("Element found: %d\n", item->data);
+  } else {
+    printf("Element not found\n");
+  }
 }
 
 /*---------------------------------------------------------------------------*/

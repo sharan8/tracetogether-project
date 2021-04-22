@@ -47,8 +47,8 @@ AUTOSTART_PROCESSES(&cc2650_nbr_discovery_process);
 // TESTING HASHMAP
 
 struct DataItem {
-   int data;   
-   int key;
+  int data;   
+  int key;
 };
 
 struct DataItem* hashArray[SIZE]; 
@@ -56,27 +56,27 @@ struct DataItem* dummyItem;
 struct DataItem* item;
 
 int hashCode(int key) {
-   return key % SIZE;
+  return key % SIZE;
 }
 
 struct DataItem *search(int key) {
-   //get the hash 
-   int hashIndex = hashCode(key);  
-	
-   //move in array until an empty 
-   while(hashArray[hashIndex] != NULL) {
-	
-      if(hashArray[hashIndex]->key == key)
-         return hashArray[hashIndex]; 
-			
-      //go to next cell
-      ++hashIndex;
-		
-      //wrap around the table
-      hashIndex %= SIZE;
-   }        
-	
-   return NULL;        
+  //get the hash 
+  int hashIndex = hashCode(key);  
+
+  //move in array until an empty 
+  while(hashArray[hashIndex] != NULL) {
+
+    if(hashArray[hashIndex]->key == key)
+      return hashArray[hashIndex]; 
+
+    //go to next cell
+    ++hashIndex;
+
+    //wrap around the table
+    hashIndex %= SIZE;
+  }        
+
+  return NULL;        
 }
 
 void insert(int key,int data) {
@@ -86,60 +86,60 @@ void insert(int key,int data) {
   item->data = data;
   item->key = key;
 
-   //get the hash 
-   int hashIndex = hashCode(key);
+  //get the hash 
+  int hashIndex = hashCode(key);
 
-   //move in array until an empty or deleted cell
-   while(hashArray[hashIndex] != NULL && hashArray[hashIndex]->key != -1) {
-      //go to next cell
-      ++hashIndex;
-		
-      //wrap around the table
-      hashIndex %= SIZE;
-   }
-	
-   hashArray[hashIndex] = item;
+  //move in array until an empty or deleted cell
+  while(hashArray[hashIndex] != NULL && hashArray[hashIndex]->key != -1) {
+    //go to next cell
+    ++hashIndex;
+
+    //wrap around the table
+    hashIndex %= SIZE;
+  }
+
+  hashArray[hashIndex] = item;
 }
 
 struct DataItem* delete(struct DataItem* item) {
-   int key = item->key;
+  int key = item->key;
 
-   //get the hash 
-   int hashIndex = hashCode(key);
+  //get the hash 
+  int hashIndex = hashCode(key);
 
-   //move in array until an empty
-   while(hashArray[hashIndex] != NULL) {
-	
-      if(hashArray[hashIndex]->key == key) {
-         struct DataItem* temp = hashArray[hashIndex]; 
-			
-         //assign a dummy item at deleted position
-         hashArray[hashIndex] = dummyItem; 
-         return temp;
-      }
-		
-      //go to next cell
-      ++hashIndex;
-		
-      //wrap around the table
-      hashIndex %= SIZE;
-   }      
-	
-   return NULL;        
+  //move in array until an empty
+  while(hashArray[hashIndex] != NULL) {
+
+    if(hashArray[hashIndex]->key == key) {
+      struct DataItem* temp = hashArray[hashIndex]; 
+
+      //assign a dummy item at deleted position
+      hashArray[hashIndex] = dummyItem; 
+      return temp;
+    }
+
+    //go to next cell
+    ++hashIndex;
+
+    //wrap around the table
+    hashIndex %= SIZE;
+  }      
+
+  return NULL;        
 }
 
 void display() {
-   int i = 0;
-	
-   for(i = 0; i<SIZE; i++) {
-	
-      if(hashArray[i] != NULL)
-         printf(" (%d,%d)",hashArray[i]->key,hashArray[i]->data);
-      else
-         printf(" ~~ ");
-   }
-	
-   printf("\n");
+  int i = 0;
+
+  for(i = 0; i<SIZE; i++) {
+
+    if(hashArray[i] != NULL)
+      printf(" (%d,%d)",hashArray[i]->key,hashArray[i]->data);
+    else
+      printf(" ~~ ");
+  }
+
+  printf("\n");
 }
 
 static void test_hashmap() {
@@ -184,7 +184,7 @@ static void test_hashmap() {
 }
 
 /*---------------------------------------------------------------------------*/
-static void
+  static void
 broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
 {
   memcpy(&received_packet, packetbuf_dataptr(), sizeof(data_packet_struct));
@@ -254,7 +254,7 @@ char sender_scheduler(struct rtimer *t, void *ptr) {
       PT_YIELD(&pt);
     }
   }
-  
+
   PT_END(&pt);
 }
 /*---------------------------------------------------------------------------*/
@@ -262,7 +262,7 @@ PROCESS_THREAD(cc2650_nbr_discovery_process, ev, data)
 {
   PROCESS_EXITHANDLER(broadcast_close(&broadcast);)
 
-  PROCESS_BEGIN();
+    PROCESS_BEGIN();
 
   test_hashmap();
 
@@ -271,17 +271,17 @@ PROCESS_THREAD(cc2650_nbr_discovery_process, ev, data)
   // get probing permuation
   populate_permuation_arr(); 
 
-  #ifdef TMOTE_SKY
+#ifdef TMOTE_SKY
   powertrace_start(CLOCK_SECOND * 5);
-  #endif
+#endif
 
   broadcast_open(&broadcast, 129, &broadcast_call);
 
   // for serial port
-  #if !WITH_UIP && !WITH_UIP6
+#if !WITH_UIP && !WITH_UIP6
   uart1_set_input(serial_line_input_byte);
   serial_line_init();
-  #endif
+#endif
 
   printf("CC2650 neighbour discovery\n");
   printf("Node %d will be sending packet of size %d Bytes\n", node_id, (int)sizeof(data_packet_struct));

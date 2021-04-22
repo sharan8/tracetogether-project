@@ -234,6 +234,22 @@ char sender_scheduler(struct rtimer *t, void *ptr) {
     if (curr_slot_index != 1) {
       nxt_slot_index = 1;
     } else {
+      int i = 0;
+      maintenance_flag += 1;
+      if (maintenance_flag % MAINTENANCE_FREQ == 0) {
+        for (i=0; i<SIZE; i++) {
+          if (hashArray[i] != NULL && hashArray[i]->node_id != -1) {
+            if ((curr_timestamp/CLOCK_SECOND) - hashArray[i]->last_seen >= 30) {
+              printf("%3lu.%03lu LEAVE %d\n", (curr_timestamp / CLOCK_SECOND)-30, ((curr_timestamp % CLOCK_SECOND)*1000) / CLOCK_SECOND, hashArray[i]->node_id);
+              printf("%d CONTACT TIME: %lu s\n", hashArray[i]->node_id, (hashArray[i]->last_seen)-(hashArray[i]->first_seen));
+              delete(hashArray[i]);
+            }
+          }
+        }
+      }
+
+      // display();
+
       nxt_slot_index = permutation_arr[permutation_arr_index];
       permutation_arr_index = (permutation_arr_index + 1) % (PROBE_SLOTS);
     }

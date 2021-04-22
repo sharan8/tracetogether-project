@@ -19,8 +19,8 @@
 #define TOTAL_SLOTS 17
 #define SLOT_TIME (RTIMER_SECOND/64)
 #define PROBE_SLOTS (TOTAL_SLOTS/2)
-#define MAX_ITEMS 16 // for hashtable
-#define SIZE 20 // for hashtable
+#define MAX_ITEMS 20 // for hashtable
+#define SIZE 50 // for hashtable
 /*---------------------------------------------------------------------------*/
 // duty cycle = WAKE_TIME / (WAKE_TIME + SLEEP_SLOT * SLEEP_CYCLE)
 /*---------------------------------------------------------------------------*/
@@ -44,29 +44,28 @@ PROCESS(cc2650_nbr_discovery_process, "cc2650 neighbour discovery process");
 AUTOSTART_PROCESSES(&cc2650_nbr_discovery_process);
 /*---------------------------------------------------------------------------*/
 
-// TESTING HASHMAP
-
-struct DataItem {
-  int data;   
-  int key;
+struct TrackedNode {
+  int node_id;
+  uint16_t last_seen;
+  uint16_t window_expiry;
 };
 
-struct DataItem* hashArray[SIZE]; 
-struct DataItem* dummyItem;
-struct DataItem* item;
+struct TrackedNode* hashArray[SIZE]; 
+struct TrackedNode* dummyItem;
+struct TrackedNode* item;
 
 int hashCode(int key) {
   return key % SIZE;
 }
 
-struct DataItem *search(int key) {
+struct TrackedNode *search(int node_id) {
   //get the hash 
-  int hashIndex = hashCode(key);  
+  int hashIndex = hashCode(node_id);  
 
   //move in array until an empty 
   while(hashArray[hashIndex] != NULL) {
 
-    if(hashArray[hashIndex]->key == key)
+    if(hashArray[hashIndex]->node_id == node_id)
       return hashArray[hashIndex]; 
 
     //go to next cell
@@ -79,18 +78,19 @@ struct DataItem *search(int key) {
   return NULL;        
 }
 
-void insert(int key,int data) {
-  MEMB(dummy_mem, struct DataItem, MAX_ITEMS);
-  struct DataItem *item;
+void insert(int node_id, uint16_t arrival_time, uint16_t last_seen) {
+  MEMB(dummy_mem, struct TrackedNode, MAX_ITEMS);
+  struct TrackedNode *item;
   item = memb_alloc(&dummy_mem);
-  item->data = data;
-  item->key = key;
+  item->node_id = node_id;
+  item->last_seen = last_seen;
+  item->window_expiry = arrival_time + 30;
 
   //get the hash 
-  int hashIndex = hashCode(key);
+  int hashIndex = hashCode(node_id);
 
   //move in array until an empty or deleted cell
-  while(hashArray[hashIndex] != NULL && hashArray[hashIndex]->key != -1) {
+  while(hashArray[hashIndex] != NULL && hashArray[hashIndex]->node_id != -1) {
     //go to next cell
     ++hashIndex;
 
@@ -99,19 +99,20 @@ void insert(int key,int data) {
   }
 
   hashArray[hashIndex] = item;
+  printf("Successfully added node with node ID: %d\n", node_id);
 }
 
-struct DataItem* delete(struct DataItem* item) {
-  int key = item->key;
+struct TrackedNode* delete(struct TrackedNode* item) {
+  int node_id = item->node_id;
 
   //get the hash 
-  int hashIndex = hashCode(key);
+  int hashIndex = hashCode(node_id);
 
   //move in array until an empty
   while(hashArray[hashIndex] != NULL) {
 
-    if(hashArray[hashIndex]->key == key) {
-      struct DataItem* temp = hashArray[hashIndex]; 
+    if(hashArray[hashIndex]->node_id == node_id) {
+      struct TrackedNode* temp = hashArray[hashIndex]; 
 
       //assign a dummy item at deleted position
       hashArray[hashIndex] = dummyItem; 
@@ -134,7 +135,7 @@ void display() {
   for(i = 0; i<SIZE; i++) {
 
     if(hashArray[i] != NULL)
-      printf(" (%d,%d)",hashArray[i]->key,hashArray[i]->data);
+      printf(" (%d,%d)",hashArray[i]->node_id,hashArray[i]->window_expiry);
     else
       printf(" ~~ ");
   }
@@ -143,43 +144,33 @@ void display() {
 }
 
 static void test_hashmap() {
-  MEMB(dummy_mem, struct DataItem, MAX_ITEMS);
-  struct DataItem *dummyItem;
+  MEMB(dummy_mem, struct TrackedNode, MAX_ITEMS);
+  struct TrackedNode *dummyItem;
   dummyItem = memb_alloc(&dummy_mem);
-  dummyItem->data = -1;
-  dummyItem->key = -1;
+  dummyItem->node_id = -1;
+  dummyItem->last_seen = -1;
+  dummyItem->window_expiry = -1;
 
-  if (dummyItem != NULL) {
-    printf("ADDED\n");
-    printf("%d\n", dummyItem->data);
-  }
-
-  insert(1, 20);
-  insert(2, 70);
-  insert(42, 80);
-  insert(4, 25);
-  insert(12, 44);
-  insert(14, 32);
-  insert(17, 11);
-  insert(13, 78);
-  insert(37, 97);
+  insert(1, 20, 20);
+  insert(2, 70, 20);
+  insert(3, 80, 80);
 
   display();
-  item = search(37);
+  item = search(3);
 
   if(item != NULL) {
-    printf("Element found: %d\n", item->data);
+    printf("Node found with ID: %d and last seen: %lu and expiry: %lu\n", item->node_id, item->last_seen, item->window_expiry);
   } else {
     printf("Element not found\n");
   }
 
   delete(item);
-  item = search(37);
+  item = search(3);
 
   if(item != NULL) {
-    printf("Element found: %d\n", item->data);
+    printf("Node found with ID: %d\n", item->node_id);
   } else {
-    printf("Element not found\n");
+    printf("Node not found\n");
   }
 }
 

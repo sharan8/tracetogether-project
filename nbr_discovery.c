@@ -1,6 +1,10 @@
 #include "contiki.h"
 #include "dev/leds.h"
+#include "dev/sht11/sht11.h"
+#include "platform/native/dev/temperature-sensor.h"
+#include "board.h"
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include "core/net/rime/rime.h"
 #include "dev/serial-line.h"
@@ -10,6 +14,17 @@
 #include "net/netstack.h"
 #include "random.h"
 #include "lib/memb.h"
+
+// For temp sensing 
+#include "sys/etimer.h"
+#include "sys/ctimer.h"
+#include "dev/watchdog.h"
+#include "button-sensor.h"
+#include "batmon-sensor.h"
+#include "board-peripherals.h"
+#include "rf-core/rf-ble.h"
+#include "ti-lib.h"
+
 #ifdef TMOTE_SKY
 #include "powertrace.h"
 #endif
@@ -41,8 +56,31 @@ static int maintenance_flag = 0;
 // Get a random permutation for the active probing slots
 void populate_permuation_arr();
 /*---------------------------------------------------------------------------*/
+PROCESS(send_sensor_info_process, "Print the Sensors Information");
 PROCESS(cc2650_nbr_discovery_process, "cc2650 neighbour discovery process");
-AUTOSTART_PROCESSES(&cc2650_nbr_discovery_process);
+AUTOSTART_PROCESSES(&send_sensor_info_process, &cc2650_nbr_discovery_process);
+/*---------------------------------------------------------------------------*/
+static void
+get_tmp_reading()
+{
+  SENSORS_ACTIVATE(tmp_007_sensor);
+  int value;
+  
+  value = tmp_007_sensor.value(TMP_007_SENSOR_TYPE_ALL);
+
+  if(value == CC26XX_SENSOR_READING_ERROR) {
+    printf("TMP: Ambient Read Error\n");
+    return;
+  }
+
+  value = tmp_007_sensor.value(TMP_007_SENSOR_TYPE_AMBIENT);
+  printf("TMP: Ambient=%d.%03d C\n", value / 1000, value % 1000);
+
+  value = tmp_007_sensor.value(TMP_007_SENSOR_TYPE_OBJECT);
+  printf("TMP: Object=%d.%03d C\n", value / 1000, value % 1000);
+
+  SENSORS_DEACTIVATE(tmp_007_sensor);
+}
 /*---------------------------------------------------------------------------*/
 // HASHMAP IMPLEMENTATION
 
@@ -269,6 +307,13 @@ char sender_scheduler(struct rtimer *t, void *ptr) {
   }
 
   PT_END(&pt);
+}
+/*---------------------------------------------------------------------------*/
+PROCESS_THREAD(send_sensor_info_process, ev, data)
+{
+  PROCESS_BEGIN();
+  get_tmp_reading();
+  PROCESS_END();
 }
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(cc2650_nbr_discovery_process, ev, data)

@@ -120,6 +120,7 @@ struct TrackedNode* delete(struct TrackedNode* item) {
       struct TrackedNode* temp = hashArray[hashIndex]; 
 
       //assign a dummy item at deleted position
+      dummyItem->node_id = -1;
       hashArray[hashIndex] = dummyItem; 
       return temp;
     }

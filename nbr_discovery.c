@@ -150,15 +150,46 @@ void display() {
 }
 
 /*---------------------------------------------------------------------------*/
-  static void
+static void
 broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
 {
   memcpy(&received_packet, packetbuf_dataptr(), sizeof(data_packet_struct));
+  int RSSI_reading =  packetbuf_attr(PACKETBUF_ATTR_RSSI);
   if (debug) {
     // printf("Send seq# %lu  @ %8lu  %3lu.%03lu\n", data_packet.seq, curr_timestamp, curr_timestamp / CLOCK_SECOND, ((curr_timestamp % CLOCK_SECOND)*1000) / CLOCK_SECOND);
-    printf("Rcv pkt RSSI: %d\n", (signed short)packetbuf_attr(PACKETBUF_ATTR_RSSI));
+    printf("Rcv pkt RSSI: %d\n", (signed short) RSSI_reading);
   }
-  printf("%3lu.%03lu DETECT %lu\n", received_packet.timestamp / CLOCK_SECOND, received_packet.src_id);
+
+
+  // Check if RSSI reading exceeds threshold
+  if ((signed short) RSSI_reading > RSSI_THRESHOLD) {
+    printf("%3lu.%03lu DETECT %lu with RSSI: %d\n", curr_timestamp / CLOCK_SECOND, ((curr_timestamp % CLOCK_SECOND)*1000) / CLOCK_SECOND, received_packet.src_id, (signed short)RSSI_reading);
+    unsigned long node_encounter_time = curr_timestamp / CLOCK_SECOND;
+
+    // Insert or update node in hashtable
+    struct TrackedNode* this_tracked_node = search(received_packet.src_id);
+    if (this_tracked_node == NULL) {
+      printf("%3lu.%03lu DETECT %lu\n", curr_timestamp / CLOCK_SECOND, ((curr_timestamp % CLOCK_SECOND)*1000) / CLOCK_SECOND, received_packet.src_id);
+
+      // Insert into hashtable
+      insert(received_packet.src_id, node_encounter_time);
+    } else {
+      // Update node stats
+      this_tracked_node->last_seen = node_encounter_time;
+
+      // Check if the 30s window is exceeded
+      if ((node_encounter_time - this_tracked_node->first_seen >= 30) &&
+          (this_tracked_node->exposed == 0)) {
+        printf("%3lu.%03lu !! CLOSE PROXIMITY FOR 30S !! NODE: %d\n", 
+          curr_timestamp / CLOCK_SECOND, 
+          ((curr_timestamp % CLOCK_SECOND)*1000) / CLOCK_SECOND, 
+          this_tracked_node->node_id);
+
+        // Set node as exposed for 30s
+        this_tracked_node->exposed = 1;
+      }
+    }
+  }
 }
 static const struct broadcast_callbacks broadcast_call = {broadcast_recv};
 static struct broadcast_conn broadcast;

@@ -149,37 +149,6 @@ void display() {
   printf("\n");
 }
 
-static void test_hashmap() {
-  MEMB(dummy_mem, struct TrackedNode, MAX_ITEMS);
-  struct TrackedNode *dummyItem;
-  dummyItem = memb_alloc(&dummy_mem);
-  dummyItem->node_id = -1;
-  dummyItem->last_seen = -1;
-  dummyItem->window_expiry = -1;
-
-  insert(1, 20, 20);
-  insert(2, 70, 20);
-  insert(3, 80, 80);
-
-  display();
-  item = search(3);
-
-  if(item != NULL) {
-    printf("Node found with ID: %d and last seen: %lu and expiry: %lu\n", item->node_id, item->last_seen, item->window_expiry);
-  } else {
-    printf("Node not found\n");
-  }
-
-  delete(item);
-  item = search(3);
-
-  if(item != NULL) {
-    printf("Node found with ID: %d\n", item->node_id);
-  } else {
-    printf("Node not found\n");
-  }
-}
-
 /*---------------------------------------------------------------------------*/
   static void
 broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)

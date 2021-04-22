@@ -16,12 +16,13 @@
 #include "powertrace.h"
 #endif
 /*---------------------------------------------------------------------------*/
-#define TOTAL_SLOTS 17
+#define TOTAL_SLOTS 25
 #define SLOT_TIME (RTIMER_SECOND/64)
 #define PROBE_SLOTS (TOTAL_SLOTS/2)
 #define MAX_ITEMS 20 // for hashtable
-#define SIZE 50 // for hashtable
+#define SIZE 20 // for hashtable
 #define RSSI_THRESHOLD -63 // for entry into 3m radius
+#define MAINTENANCE_FREQ 3  // maintenance per number of anchor slots
 /*---------------------------------------------------------------------------*/
 // duty cycle = WAKE_TIME / (WAKE_TIME + SLEEP_SLOT * SLEEP_CYCLE)
 /*---------------------------------------------------------------------------*/

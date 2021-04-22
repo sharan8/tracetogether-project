@@ -48,8 +48,9 @@ AUTOSTART_PROCESSES(&cc2650_nbr_discovery_process);
 // Represents an encountered node
 struct TrackedNode {
   int node_id;
-  unsigned long last_seen;     // last seen timestamp
-  unsigned long window_expiry; // end of 30s window for node
+  unsigned long first_seen;     // first seen timestamp
+  unsigned long last_seen;      // last seen timestamp
+  int exposed;                  // 1 if exposed for >30s, 0 otherwise
 };
 
 struct TrackedNode* hashArray[SIZE]; // hashtable

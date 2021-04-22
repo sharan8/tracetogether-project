@@ -141,7 +141,7 @@ void display() {
   for(i = 0; i<SIZE; i++) {
 
     if(hashArray[i] != NULL)
-      printf(" (%d,%d,%d)",hashArray[i]->node_id,hashArray[i]->window_expiry,hashArray[i]->last_seen);
+      printf(" (%d,%d,%d)",hashArray[i]->node_id,hashArray[i]->first_seen,hashArray[i]->last_seen);
     else
       printf(" ~~ ");
   }

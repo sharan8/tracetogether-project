@@ -11,6 +11,7 @@
 #include "random.h"
 #include <string.h>
 #include <stdbool.h>
+#include "lib/memb.h"
 #ifdef TMOTE_SKY
 #include "powertrace.h"
 #endif
@@ -18,6 +19,7 @@
 #define TOTAL_SLOTS 17
 #define SLOT_TIME (RTIMER_SECOND/64)
 #define PROBE_SLOTS (TOTAL_SLOTS/2)
+#define MAX_ITEMS 16 // for hashtable
 #define SIZE 20 // for hashtable
 /*---------------------------------------------------------------------------*/
 // duty cycle = WAKE_TIME / (WAKE_TIME + SLEEP_SLOT * SLEEP_CYCLE)
@@ -78,10 +80,11 @@ struct DataItem *search(int key) {
 }
 
 void insert(int key,int data) {
-
-   struct DataItem *item = (struct DataItem*) malloc(sizeof(struct DataItem));
-   item->data = data;  
-   item->key = key;
+  MEMB(dummy_mem, struct DataItem, MAX_ITEMS);
+  struct DataItem *item;
+  item = memb_alloc(&dummy_mem);
+  item->data = data;
+  item->key = key;
 
    //get the hash 
    int hashIndex = hashCode(key);
@@ -140,9 +143,16 @@ void display() {
 }
 
 static void test_hashmap() {
-  dummyItem = (struct DataItem*) malloc(sizeof(struct DataItem));
-  dummyItem->data = -1;  
-  dummyItem->key = -1; 
+  MEMB(dummy_mem, struct DataItem, MAX_ITEMS);
+  struct DataItem *dummyItem;
+  dummyItem = memb_alloc(&dummy_mem);
+  dummyItem->data = -1;
+  dummyItem->key = -1;
+
+  if (dummyItem != NULL) {
+    printf("ADDED\n");
+    printf("%d\n", dummyItem->data);
+  }
 
   insert(1, 20);
   insert(2, 70);

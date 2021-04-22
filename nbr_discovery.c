@@ -21,6 +21,7 @@
 #define PROBE_SLOTS (TOTAL_SLOTS/2)
 #define MAX_ITEMS 20 // for hashtable
 #define SIZE 50 // for hashtable
+#define RSSI_THRESHOLD -63 // for entry into 3m radius
 /*---------------------------------------------------------------------------*/
 // duty cycle = WAKE_TIME / (WAKE_TIME + SLEEP_SLOT * SLEEP_CYCLE)
 /*---------------------------------------------------------------------------*/
@@ -43,14 +44,16 @@ void populate_permuation_arr();
 PROCESS(cc2650_nbr_discovery_process, "cc2650 neighbour discovery process");
 AUTOSTART_PROCESSES(&cc2650_nbr_discovery_process);
 /*---------------------------------------------------------------------------*/
+// HASHMAP IMPLEMENTATION
 
+// Represents an encountered node
 struct TrackedNode {
   int node_id;
-  uint16_t last_seen;
-  uint16_t window_expiry;
+  unsigned long last_seen;     // last seen timestamp
+  unsigned long window_expiry; // end of 30s window for node
 };
 
-struct TrackedNode* hashArray[SIZE]; 
+struct TrackedNode* hashArray[SIZE]; // hashtable
 struct TrackedNode* dummyItem;
 struct TrackedNode* item;
 
@@ -135,7 +138,7 @@ void display() {
   for(i = 0; i<SIZE; i++) {
 
     if(hashArray[i] != NULL)
-      printf(" (%d,%d)",hashArray[i]->node_id,hashArray[i]->window_expiry);
+      printf(" (%d,%d,%d)",hashArray[i]->node_id,hashArray[i]->window_expiry,hashArray[i]->last_seen);
     else
       printf(" ~~ ");
   }
@@ -161,7 +164,7 @@ static void test_hashmap() {
   if(item != NULL) {
     printf("Node found with ID: %d and last seen: %lu and expiry: %lu\n", item->node_id, item->last_seen, item->window_expiry);
   } else {
-    printf("Element not found\n");
+    printf("Node not found\n");
   }
 
   delete(item);
@@ -253,9 +256,7 @@ PROCESS_THREAD(cc2650_nbr_discovery_process, ev, data)
 {
   PROCESS_EXITHANDLER(broadcast_close(&broadcast);)
 
-    PROCESS_BEGIN();
-
-  test_hashmap();
+  PROCESS_BEGIN();
 
   random_init(54222 + node_id);
 

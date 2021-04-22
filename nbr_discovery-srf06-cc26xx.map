@@ -1920,8 +1920,8 @@ END GROUP
                 0x000000000000a650       0x77 nbr_discovery.co
  *fill*         0x000000000000a6c7        0x1 00000000
  .rodata.sender_scheduler.str1.4
-                0x000000000000a6c8       0x35 nbr_discovery.co
- *fill*         0x000000000000a6fd        0x3 00000000
+                0x000000000000a6c8       0x36 nbr_discovery.co
+ *fill*         0x000000000000a6fe        0x2 00000000
  .rodata.broadcast_recv.str1.4
                 0x000000000000a700       0x4b nbr_discovery.co
  *fill*         0x000000000000a74b        0x1 00000000

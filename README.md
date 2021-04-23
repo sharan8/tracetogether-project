@@ -11,9 +11,9 @@ The [CC2650 SensorTag](https://www.ti.com/tool/TIDC-CC2650STK-SENSORTAG) device 
 | Output                                                   | Meaning |
 |----------------------------------------------------------|---------------------------------------------------------------------------------------------------------------|
 | "timestamp" DETECT "nodeID"                              | Device has detected another device with node ID  <nodeID> for the first time, and it has entered in proximity |
-| "timestamp" LEAVE "nodeID"                               | Device has determined that the node with node ID  <nodeID> has moved away from proximity                      |
+| "timestamp" LEAVE "nodeID"                               | Device has determined that the node with node ID  <nodeID> has moved away from proximity for 30s               |
 | "timestamp" !! CLOSE PROXIMITY FOR 30S !! NODE: "nodeID" | Device has detected another device with node ID <nodeID> in proximity for 30s                                 |
-| Node "nodeID" CONTACT TIME: "x seconds"                  | Device has a contact time of x seconds with the node with <nodeID>, prior to its departure from proximity     |
+| Node "nodeID" CONTACT TIME: "x seconds"                  | Device has a contact time of x seconds with the node with <nodeID>, prior to its departure from proximity |
 
 ## Compilation Steps
 The following steps are relevant to the macOS operating system:

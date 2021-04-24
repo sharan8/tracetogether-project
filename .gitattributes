@@ -1,0 +1,9 @@
+*.o linguist-detectable=false
+*.d linguist-detectable=false
+Makefile linguist-detectable=false
+Makefile.target linguist-detectable=false
+*.bin linguist-detectable=false
+*.elf linguist-detectable=false
+*.map linguist-detectable=false
+*.csc linguist-detectable=false
+*.a linguist-detectable=false
